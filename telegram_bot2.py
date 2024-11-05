@@ -1,3 +1,4 @@
+import os
 import logging
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -110,7 +111,9 @@ def main():
     application.add_handler(CommandHandler("send", send_material))  # Kommando för att skicka materialet
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    application.run_polling()
+    # Get the port from the environment variable or use a default
+    port = int(os.environ.get("PORT", "8443"))
+    application.run_polling(port=port)
 
 if __name__ == '__main__':
     main()
