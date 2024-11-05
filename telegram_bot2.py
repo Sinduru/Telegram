@@ -1,6 +1,9 @@
 import logging
+import os
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from flask import Flask, request
+from telegram.ext import Dispatcher
 
 # Aktivera loggning
 logging.basicConfig(level=logging.INFO)
@@ -8,6 +11,9 @@ logger = logging.getLogger(__name__)
 
 # Lagra användares bilder, videor och info
 user_media = {}
+
+# Flask app for Render
+app = Flask(__name__)
 
 # Funktion för att hantera mottagna bilder och videor
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -100,9 +106,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
+# Webhook route for Render
+@app.route('/' + '7484300801:AAG11ALjQTCZqXJz-mk5E4vnhqPx_vJtm6A', methods=['POST'])
+def webhook():
+    json_str = request.get_data().decode('UTF-8')
+    update = Update.de_json(json_str, application.bot)
+    application.dispatcher.process_update(update)
+    return 'OK'
+
 # Huvudfunktion för att köra botten
 def main():
-    bot_token = '7484300801:AAG11ALjQTCZqXJz-mk5E4vnhqPx_vJtm6A'  # Din bot-token
+    bot_token = '7484300801:AAG11ALjQTCZqXJz-mk5E4vnhqPx_vJtm6A'  # Bot token directly in the code
     application = ApplicationBuilder().token(bot_token).build()
 
     # Registrera kommandon och meddelandehanterare
@@ -110,7 +124,11 @@ def main():
     application.add_handler(CommandHandler("send", send_material))  # Kommando för att skicka materialet
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    application.run_polling()
+    # Set webhook on Render platform
+    application.bot.set_webhook(url=f"https://telegram-8m69.onrender.com")
+
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
 if __name__ == '__main__':
     main()
