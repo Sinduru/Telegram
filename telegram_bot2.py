@@ -1,9 +1,9 @@
 import os
 import logging
+import asyncio
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from flask import Flask
-from threading import Thread
 
 # Aktivera loggning
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +20,7 @@ def home():
 # Lagra användares bilder, videor och info
 user_media = {}
 
-# Funktionen för att hantera mottagna bilder och videor
+# Funktion för att hantera mottagna bilder och videor
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username
@@ -91,8 +91,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
-# Huvudfunktion för att köra botten
-def main():
+# Funktion för att köra botten
+async def run_bot():
     bot_token = '7484300801:AAG11ALjQTCZqXJz-mk5E4vnhqPx_vJtm6A'
     application = ApplicationBuilder().token(bot_token).build()
 
@@ -100,12 +100,15 @@ def main():
     application.add_handler(CommandHandler("send", send_material))
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    # Start bot polling in a separate thread
-    Thread(target=application.run_polling).start()
+    await application.run_polling()
 
-    # Start Flask app to keep the service alive
+# Start Flask app and Telegram bot concurrently
+async def main():
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    flask_server = app.run(host="0.0.0.0", port=port)
 
+    await asyncio.gather(run_bot(), flask_server)
+
+# Run main
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
