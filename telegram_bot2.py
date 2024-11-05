@@ -4,6 +4,7 @@ import asyncio
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from flask import Flask
+from threading import Thread
 
 # Enable logging
 logging.basicConfig(level=logging.INFO)
@@ -102,16 +103,15 @@ async def run_bot():
 
     await application.run_polling()
 
-# Start Flask and bot concurrently
-def run_flask():
+# Start Flask in a separate thread
+def start_flask():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
 
 # Main function to run both Flask and Telegram bot
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    # Start Flask in a separate thread
-    from threading import Thread
-    flask_thread = Thread(target=run_flask)
+    # Start Flask server in a separate thread
+    flask_thread = Thread(target=start_flask)
     flask_thread.start()
-    # Run the Telegram bot
-    loop.run_until_complete(run_bot())
+
+    # Run the Telegram bot asynchronously
+    asyncio.get_event_loop().run_until_complete(run_bot())
