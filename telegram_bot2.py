@@ -111,9 +111,8 @@ def main():
     application.add_handler(CommandHandler("send", send_material))  # Kommando för att skicka materialet
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    # Get the port from the environment variable or use a default
-    port = int(os.environ.get("PORT", "10000"))
-    application.run_polling(port=port)
+    # Run polling without specifying a port
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
