@@ -5,7 +5,7 @@ from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from flask import Flask
 
-# Aktivera loggning
+# Enable logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -17,10 +17,10 @@ app = Flask(__name__)
 def home():
     return "Bot is running!"
 
-# Lagra användares bilder, videor och info
+# Store user media
 user_media = {}
 
-# Funktion för att hantera mottagna bilder och videor
+# Function to handle received media
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username
@@ -42,7 +42,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"Tack, ditt material nummer {user_media[user_id]['counter']} har tagits emot!\nNär du är klar, skriv /send för att skicka allt material till gruppen.")
 
-# Funktion för att skicka det insamlade materialet
+# Function to send collected media
 async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username
@@ -77,7 +77,7 @@ async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(thank_you_message)
     del user_media[user_id]
 
-# Funktion för att starta botten
+# Start bot
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
         "*LION BAR FC*\n\n"
@@ -91,7 +91,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
-# Funktion för att köra botten
+# Run bot
 async def run_bot():
     bot_token = '7484300801:AAG11ALjQTCZqXJz-mk5E4vnhqPx_vJtm6A'
     application = ApplicationBuilder().token(bot_token).build()
@@ -102,12 +102,15 @@ async def run_bot():
 
     await application.run_polling()
 
-# Start Flask app and Telegram bot concurrently
+# Start Flask and bot concurrently
 async def main():
     port = int(os.environ.get("PORT", 5000))
-    flask_server = app.run(host="0.0.0.0", port=port)
-
-    await asyncio.gather(run_bot(), flask_server)
+    # Run Flask in the background
+    flask_task = asyncio.create_task(app.run(host="0.0.0.0", port=port, use_reloader=False))
+    # Run Telegram bot concurrently
+    await run_bot()
+    # Await the Flask task to prevent it from exiting
+    await flask_task
 
 # Run main
 if __name__ == '__main__':
