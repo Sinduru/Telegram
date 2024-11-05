@@ -112,8 +112,11 @@ def start_flask():
 if __name__ == '__main__':
     # Start Flask server in a separate thread
     flask_thread = Thread(target=start_flask)
+    flask_thread.daemon = True
     flask_thread.start()
 
-    # Start the Telegram bot task in the same event loop as Flask
-    asyncio.get_event_loop().create_task(run_bot())
-    asyncio.get_event_loop().run_forever()
+    # Use asyncio's new event loop for the Telegram bot to avoid conflicts with Flask
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.create_task(run_bot())
+    loop.run_forever()
