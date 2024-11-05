@@ -108,14 +108,17 @@ def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
-# Main function
+# Main function to start Flask and bot concurrently
 def main():
     # Start Flask app in a separate thread
     flask_thread = Thread(target=run_flask)
     flask_thread.start()
     
-    # Run the bot with asyncio in the main thread
-    asyncio.run(run_bot())
+    # Run the bot without asyncio.run(), as we're already in an event loop
+    asyncio.create_task(run_bot())
+
+    # Keep the main thread running
+    flask_thread.join()
 
 # Run the main function
 if __name__ == '__main__':
