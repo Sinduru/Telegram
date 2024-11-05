@@ -101,6 +101,7 @@ async def run_bot():
     application.add_handler(CommandHandler("send", send_material))
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
+    # Start bot polling
     await application.run_polling()
 
 # Start Flask in a separate thread
@@ -113,5 +114,6 @@ if __name__ == '__main__':
     flask_thread = Thread(target=start_flask)
     flask_thread.start()
 
-    # Run the Telegram bot asynchronously
-    asyncio.get_event_loop().run_until_complete(run_bot())
+    # Start the Telegram bot task in the same event loop as Flask
+    asyncio.get_event_loop().create_task(run_bot())
+    asyncio.get_event_loop().run_forever()
