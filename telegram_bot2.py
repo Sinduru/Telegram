@@ -1,10 +1,11 @@
 import os
 import logging
 import asyncio
-from telegram import Update, InputMediaPhoto, InputMediaVideo
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from flask import Flask
 from threading import Thread
+from flask_socketio import SocketIO
+from telegram import Update, InputMediaPhoto, InputMediaVideo
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # Enable logging
 logging.basicConfig(level=logging.INFO)
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
+socketio = SocketIO(app)
 
 # Dummy route to keep the server alive
 @app.route('/')
@@ -106,7 +108,7 @@ async def run_bot():
 
 # Start Flask in a separate thread
 def start_flask():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
 
 # Main function to run both Flask and Telegram bot
 if __name__ == '__main__':
