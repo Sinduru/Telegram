@@ -63,12 +63,12 @@ async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Skicka vidare materialet till gruppen
     await context.bot.send_message(
-        chat_id='-2273687711',  # Din grupps chat_id med minus
+        chat_id='-1002273687711',  # Din grupps chat_id med minus
         text=user_info_message,
     )
     
     await context.bot.send_media_group(
-        chat_id='-2273687711',
+        chat_id='-1002273687711',
         media=media_group
     )
 
@@ -76,9 +76,7 @@ async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thank_you_message = (
         "Tack för ditt bidrag, ditt material skickas vidare till gruppen. "
         "En av ägarna eller våra mod(s) kommer undersöka ditt material. "
-        "Om du blir godkänd får du tillgång till gruppen. "
-        "Så länge kan du ansöka att komma in i gruppen så godkänns du när materialet har godkänts!\n\n"
-        "https://t.me/+VHQKGrUi2K44ZDdh"
+        "Om du blir godkänd får du tillgång till gruppen. Vår bot skickar en inbjudanslänk inom kort tid! "
     )
     
     await update.message.reply_text(thank_you_message)
