@@ -76,7 +76,8 @@ async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thank_you_message = (
         "Tack för ditt bidrag, ditt material skickas vidare till gruppen. "
         "En av ägarna eller våra mod(s) kommer undersöka ditt material. "
-        "Om du blir godkänd får du tillgång till gruppen. Vår bot skickar en inbjudanslänk inom kort tid! "
+        "Om du blir godkänd får du tillgång till gruppen.\n"
+        "t.me/2fEGCLjXZFkwYTA0"
     )
     
     await update.message.reply_text(thank_you_message)
