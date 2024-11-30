@@ -63,7 +63,7 @@ async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Skicka vidare materialet till gruppen
     await context.bot.send_message(
-        chat_id='-1002287795140',  # Din grupps chat_id med minus
+        chat_id='-2273687711',  # Din grupps chat_id med minus
         text=user_info_message,
     )
     
