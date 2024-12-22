@@ -11,11 +11,6 @@ user_media = {}
 
 # Funktion för att hantera mottagna bilder och videor
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Kontrollera att meddelandet är ett privatmeddelande
-    if update.effective_chat.type != 'private':
-        await update.message.reply_text("Det här kommandot fungerar bara i privata meddelanden med botten.")
-        return
-
     user_id = update.effective_user.id
     username = update.effective_user.username  # Hämtar användarnamnet
     first_name = update.effective_user.first_name  # Hämtar förnamnet
@@ -42,11 +37,6 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Funktion för att skicka det insamlade materialet
 async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Kontrollera att kommandot används i en privat chatt
-    if update.effective_chat.type != 'private':
-        await update.message.reply_text("Det här kommandot fungerar bara i privata meddelanden med botten.")
-        return
-
     user_id = update.effective_user.id
     username = update.effective_user.username  # Hämtar användarnamnet
     first_name = update.effective_user.first_name  # Hämtar förnamnet
@@ -78,7 +68,7 @@ async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     await context.bot.send_media_group(
-        chat_id=-1002461965368'',
+        chat_id='-1002461965368',
         media=media_group
     )
 
