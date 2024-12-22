@@ -101,7 +101,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Huvudfunktion för att köra botten
 def main():
-    bot_token = '7463217999:AAHXZzQg0LhewuF0w0OUjsDCyVQ1EhlhvJg'  # Din bot-token
+    bot_token = '7609132899:AAHS5yE8HBVIjx9UVl42SDAo2kEveZy4Kys'  # Din bot-token
     application = ApplicationBuilder().token(bot_token).build()
 
     # Registrera kommandon och meddelandehanterare
