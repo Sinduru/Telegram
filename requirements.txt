@@ -1,3 +1,6 @@
 python-telegram-bot==21.6
 Flask
 Flask-socketio
+fastapi
+uvicorn
+asyncio
