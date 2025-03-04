@@ -147,7 +147,9 @@ async def run_telegram_bot():
 # FastAPI lifespan event handler for startup
 @app.on_event("startup")
 async def on_startup():
-    asyncio.create_task(run_telegram_bot())
+    # Ensure bot runs in the same event loop as FastAPI
+    loop = asyncio.get_event_loop()
+    loop.create_task(run_telegram_bot())
 
 # FastAPI route for testing
 @app.get("/")
