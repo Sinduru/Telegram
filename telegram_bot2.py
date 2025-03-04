@@ -4,7 +4,6 @@ from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from fastapi import FastAPI
 from telegram.error import TimedOut, NetworkError
-from threading import Thread
 
 # Aktivera loggning
 logging.basicConfig(level=logging.INFO)
@@ -131,10 +130,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
-# Huvudfunktion för att köra botten
+# Funktion för att köra Telegram-boten
 async def run_telegram_bot():
     bot_token = '7283501110:AAGOu2q8CDqucCR0-ozm2vgUzHKBw6R5_kw'  # Replace with your bot token
-
     reset_user_media()
 
     application = ApplicationBuilder().token(bot_token).build()
@@ -144,12 +142,11 @@ async def run_telegram_bot():
     application.add_handler(CommandHandler("chat", request_chat))  # Lägger till requestchat
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    await application.run_polling()
+    await application.run_polling(drop_pending_updates=True)
 
-# Run Telegram bot in the same event loop as FastAPI
+# FastAPI lifespan event handler for startup
 @app.on_event("startup")
 async def on_startup():
-    # Run the telegram bot in background
     asyncio.create_task(run_telegram_bot())
 
 # FastAPI route for testing
