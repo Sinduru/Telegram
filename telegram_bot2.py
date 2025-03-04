@@ -1,115 +1,151 @@
 import logging
+import asyncio
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.error import TimedOut, NetworkError
+from fastapi import FastAPI
+import uvicorn
+import threading
+import os
 
 # Aktivera loggning
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Ditt Telegram-ID (Ägarens ID)
+OWNER_ID = 7840233938  # Ersätt med ditt riktiga Telegram-ID
+
 # Lagra användares bilder, videor och info
 user_media = {}
+
+# Skapa en FastAPI-app för keep-alive
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"status": "Bot is running"}
 
 # Funktion för att hantera mottagna bilder och videor
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    username = update.effective_user.username  # Hämtar användarnamnet
-    first_name = update.effective_user.first_name  # Hämtar förnamnet
-    last_name = update.effective_user.last_name  # Hämtar efternamnet
+    username = update.effective_user.username or f"{update.effective_user.first_name} {update.effective_user.last_name}" or "anonym"
 
-    # Om ingen användarnamn finns, skapa ett namn baserat på förnamn och efternamn
-    if not username:
-        username = f"{first_name} {last_name}" if first_name or last_name else "anonym"
-    
-    # Skapa en ny lista för användaren om den inte finns
     if user_id not in user_media:
-        user_media[user_id] = {"photos": [], "videos": [], "chat_id": update.effective_chat.id, "counter": 0}
+        user_media[user_id] = {"photos": [], "videos": [], "chat_id": update.effective_chat.id, "counter": 0, "username": username}
 
-    # Kontrollera om meddelandet innehåller en bild eller video
     if update.message.photo:
         user_media[user_id]["photos"].append(update.message.photo[-1].file_id)
-        user_media[user_id]["counter"] += 1
     elif update.message.video:
         user_media[user_id]["videos"].append(update.message.video.file_id)
-        user_media[user_id]["counter"] += 1
 
-    # Skicka ett tackmeddelande efter varje material och påminn om /send
-    await update.message.reply_text(f"Tack, ditt material nummer {user_media[user_id]['counter']} har tagits emot!\nNär du är klar, skriv /send för att skicka allt material till gruppen.")
+    user_media[user_id]["counter"] += 1
+
+    await update.message.reply_text(
+        f"Tack, ditt material nummer {user_media[user_id]['counter']} har tagits emot!\n"
+        "När du är klar med alla steg, skriv /send för att skicka allt material till kontrollanter."
+    )
 
 # Funktion för att skicka det insamlade materialet
 async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    username = update.effective_user.username  # Hämtar användarnamnet
-    first_name = update.effective_user.first_name  # Hämtar förnamnet
-    last_name = update.effective_user.last_name  # Hämtar efternamnet
 
-    # Om ingen användarnamn finns, skapa ett namn baserat på förnamn och efternamn
-    if not username:
-        username = f"{first_name} {last_name}" if first_name or last_name else "anonym"
-    
-    # Kontrollera om användaren har skickat några bilder eller videor
     if user_id not in user_media or (not user_media[user_id]["photos"] and not user_media[user_id]["videos"]):
         await update.message.reply_text("Du har inte skickat några bilder eller videor än!")
         return
 
-    # Skapa en meddelande som inkluderar användarens ID och namn
+    username = user_media[user_id]["username"]
     user_info_message = f"Användare: {username} (ID: {user_id}) har skickat följande material:\n"
 
-    # Skapa en lista för alla media att skicka (bilder + videor)
-    media_group = []
-    for photo_id in user_media[user_id]["photos"]:
-        media_group.append(InputMediaPhoto(media=photo_id))
-    for video_id in user_media[user_id]["videos"]:
-        media_group.append(InputMediaVideo(media=video_id))
+    try:
+        await context.bot.send_message(chat_id='-4662197024', text=user_info_message)
+    except TimedOut:
+        await update.message.reply_text("Timeout vid försök att skicka användarinformation. Försök igen.")
+        return
 
-    # Skicka vidare materialet till gruppen
-    await context.bot.send_message(
-        chat_id='-1002461965368',  # Din grupps chat_id med minus
-        text=user_info_message,
-    )
-    
-    await context.bot.send_media_group(
-        chat_id='-1002461965368',
-        media=media_group
-    )
+    async def send_media_in_batches(media_list, media_type):
+        batch_size = 10
+        for i in range(0, len(media_list), batch_size):
+            batch = media_list[i:i + batch_size]
+            media_group = [
+                InputMediaPhoto(media=file_id) if media_type == "photo" else InputMediaVideo(media=file_id)
+                for file_id in batch
+            ]
+            try:
+                await context.bot.send_media_group(chat_id='-4662197024', media=media_group)
+                await asyncio.sleep(2)
+            except TimedOut:
+                await update.message.reply_text(f"Timeout vid försök att skicka {media_type}. Försöker igen...")
 
-    # Skicka tackmeddelande till användaren
-    thank_you_message = (
-        "Tack för ditt bidrag, ditt material skickas vidare till gruppen. "
-        "En av ägarna eller våra mod(s) kommer undersöka ditt material. "
-        "Om du blir godkänd får du tillgång till gruppen.\n"
-        "https://t.me/+0FDzArg3Iy9hNzI0"
-    )
-    
-    await update.message.reply_text(thank_you_message)
+    if user_media[user_id]["photos"]:
+        await send_media_in_batches(user_media[user_id]["photos"], "photo")
+    if user_media[user_id]["videos"]:
+        await send_media_in_batches(user_media[user_id]["videos"], "video")
 
-    # Rensa materialet från minnet efter att det skickats
+    try:
+        await update.message.reply_text(
+            "Tack för ditt bidrag, ditt material skickas vidare till gruppen. "
+            "En av ägarna eller våra mod(s) kommer undersöka ditt material. "
+            "Om du blir godkänd får du tillgång till gruppen inom 1-30 minuter.\n"
+            "https://t.me/+cUeYDz-kov4zY2Q0"
+        )
+    except TimedOut:
+        logger.warning(f"Timeout vid försök att skicka tackmeddelande till {user_id}")
+
     del user_media[user_id]
+
+# Funktion för att skicka ett meddelande till en specifik användare (endast ägaren)
+async def request_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("Endast ägaren kan använda detta kommando.")
+        return
+
+    try:
+        target_user_id = int(context.args[0])  # Användar-ID
+        message_text = " ".join(context.args[1:])  # Meddelandet
+
+        if not message_text:
+            await update.message.reply_text("Du måste ange ett meddelande att skicka.")
+            return
+
+        await context.bot.send_message(chat_id=target_user_id, text=f"🔔 Meddelande från admin:\n\n{message_text}")
+        await update.message.reply_text(f"Meddelandet har skickats till {target_user_id}.")
+
+    except (IndexError, ValueError):
+        await update.message.reply_text("Använd kommandot så här: `/requestchat <användar-ID> <meddelande>`")
+    except TimedOut:
+        await update.message.reply_text("Timeout vid försök att skicka meddelandet. Försök igen.")
+    except Exception as e:
+        await update.message.reply_text(f"Fel uppstod: {e}")
 
 # Funktion för att starta botten
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
-        "*LION BAR FC*\n\n"
-        "Hej, tack för ditt intresse att få tillgång till gruppen!\n\n"
-        "*VIKTIGT INFOMRATION*\n\n"
-        "Efter du blivit godkänt till gruppen, var vänligen att skicka ditt material till gruppen, "
-        "så att du kan säkerhetsställa du inte blir kickad i rensningen och så att nytt material kommer in i gruppen!\n\n"
-        "*Hur kommer jag in?*\n\n"
-        "*Var vänligen skicka minst 3-5 bilder eller videor!*\n\n"
-        "När du är klar, skriv /send för att skicka allt material till vår kontroll grupp, så vi kan ge dig tillgång!"
+        "*Swedish Beauty*\n\n"
+        "Hej! För att få tillgång till gruppen, följ dessa steg:\n\n"
+        "1️⃣ Skicka en skärmdump som visar att du har delat gruppen.\n"
+        "2️⃣ Skicka några bilder på ditt smygfoto material (bidrag krävs).\n"
+        "3️⃣ Skriv /send när du är klar, så skickas materialet till vår kontrollgrupp.\n"
+        "4️⃣ När vi granskat ditt material får du en länk till gruppen!\n\n"
+        "⏳ *Det tar vanligtvis 1-30 minuter för att granskas.*\n\n"
+        "Lycka till! 🎉"
     )
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
 # Huvudfunktion för att köra botten
-def main():
-    bot_token = '7609132899:AAHS5yE8HBVIjx9UVl42SDAo2kEveZy4Kys'  # Din bot-token
+def run_telegram_bot():
+    bot_token = '7283501110:AAGOu2q8CDqucCR0-ozm2vgUzHKBw6R5_kw'  # Ersätt med din riktiga bot-token
     application = ApplicationBuilder().token(bot_token).build()
 
-    # Registrera kommandon och meddelandehanterare
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("send", send_material))  # Kommando för att skicka materialet
+    application.add_handler(CommandHandler("send", send_material))
+    application.add_handler(CommandHandler("chat", request_chat))  # Lägger till requestchat
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
     application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    # Starta botten i en separat tråd för att köra den parallellt med FastAPI
+    threading.Thread(target=run_telegram_bot, daemon=True).start()
+
+    # Starta FastAPI-servern på port 8000
+    uvicorn.run(app, host="0.0.0.0", port=8000)
