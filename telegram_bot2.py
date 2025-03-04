@@ -5,7 +5,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from telegram.error import TimedOut, NetworkError
 from fastapi import FastAPI
 import uvicorn
-import threading
 import os
 
 # Aktivera loggning
@@ -131,8 +130,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
-# Huvudfunktion för att köra botten
-def run_telegram_bot():
+# Funktion för att köra botten
+async def run_telegram_bot():
     bot_token = '7283501110:AAGOu2q8CDqucCR0-ozm2vgUzHKBw6R5_kw'  # Ersätt med din riktiga bot-token
     application = ApplicationBuilder().token(bot_token).build()
 
@@ -141,11 +140,16 @@ def run_telegram_bot():
     application.add_handler(CommandHandler("chat", request_chat))  # Lägger till requestchat
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    application.run_polling()
+    await application.run_polling()
 
-if __name__ == '__main__':
-    # Starta botten i en separat tråd för att köra den parallellt med FastAPI
-    threading.Thread(target=run_telegram_bot, daemon=True).start()
+# Startar FastAPI och Telegram-bot samtidigt
+def main():
+    # Starta boten och FastAPI-servern parallellt
+    loop = asyncio.get_event_loop()
+    loop.create_task(run_telegram_bot())  # Kör boten i bakgrunden
 
     # Starta FastAPI-servern på port 8000
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == '__main__':
+    main()
