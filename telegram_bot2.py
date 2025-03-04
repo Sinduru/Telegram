@@ -1,10 +1,10 @@
 import logging
 import asyncio
-from threading import Thread
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from fastapi import FastAPI
 from telegram.error import TimedOut, NetworkError
+from threading import Thread
 
 # Aktivera loggning
 logging.basicConfig(level=logging.INFO)
@@ -132,8 +132,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
 # Huvudfunktion för att köra botten
-def run_telegram_bot():
-    bot_token = '7283501110:AAGOu2q8CDqucCR0-ozm2vgUzHKBw6R5_kw'  # Ersätt med din riktiga bot-token
+async def run_telegram_bot():
+    bot_token = '7283501110:AAGOu2q8CDqucCR0-ozm2vgUzHKBw6R5_kw'  # Replace with your bot token
 
     reset_user_media()
 
@@ -144,20 +144,18 @@ def run_telegram_bot():
     application.add_handler(CommandHandler("chat", request_chat))  # Lägger till requestchat
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    application.run_polling()
+    await application.run_polling()
 
-# Start Telegram Bot in separate thread to avoid blocking FastAPI server
-def run_bot_in_thread():
-    thread = Thread(target=run_telegram_bot)
-    thread.start()
+# Run Telegram bot in the same event loop as FastAPI
+@app.on_event("startup")
+async def on_startup():
+    # Run the telegram bot in background
+    asyncio.create_task(run_telegram_bot())
 
 # FastAPI route for testing
 @app.get("/")
 async def root():
     return {"message": "Bot is running!"}
-
-# Run Telegram bot in a separate thread
-run_bot_in_thread()
 
 # Run FastAPI application
 if __name__ == "__main__":
