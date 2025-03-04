@@ -1,15 +1,17 @@
 import logging
 import asyncio
+from threading import Thread
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram.error import TimedOut, NetworkError
 from fastapi import FastAPI
-import uvicorn
-import os
+from telegram.error import TimedOut, NetworkError
 
 # Aktivera loggning
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# FastAPI app
+app = FastAPI()
 
 # Ditt Telegram-ID (Ägarens ID)
 OWNER_ID = 7840233938  # Ersätt med ditt riktiga Telegram-ID
@@ -17,12 +19,10 @@ OWNER_ID = 7840233938  # Ersätt med ditt riktiga Telegram-ID
 # Lagra användares bilder, videor och info
 user_media = {}
 
-# Skapa en FastAPI-app för keep-alive
-app = FastAPI()
-
-@app.get("/")
-def home():
-    return {"status": "Bot is running"}
+# Rensa användares material vid start
+def reset_user_media():
+    global user_media
+    user_media = {}
 
 # Funktion för att hantera mottagna bilder och videor
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,6 +74,7 @@ async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await asyncio.sleep(2)
             except TimedOut:
                 await update.message.reply_text(f"Timeout vid försök att skicka {media_type}. Försöker igen...")
+                await context.bot.send_media_group(chat_id='-4662197024', media=media_group)
 
     if user_media[user_id]["photos"]:
         await send_media_in_batches(user_media[user_id]["photos"], "photo")
@@ -130,9 +131,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
-# Funktion för att köra botten
-async def run_telegram_bot():
+# Huvudfunktion för att köra botten
+def run_telegram_bot():
     bot_token = '7283501110:AAGOu2q8CDqucCR0-ozm2vgUzHKBw6R5_kw'  # Ersätt med din riktiga bot-token
+
+    reset_user_media()
+
     application = ApplicationBuilder().token(bot_token).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -140,16 +144,22 @@ async def run_telegram_bot():
     application.add_handler(CommandHandler("chat", request_chat))  # Lägger till requestchat
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    await application.run_polling()
+    application.run_polling()
 
-# Startar FastAPI och Telegram-bot samtidigt
-def main():
-    # Starta boten och FastAPI-servern parallellt
-    loop = asyncio.get_event_loop()
-    loop.create_task(run_telegram_bot())  # Kör boten i bakgrunden
+# Start Telegram Bot in separate thread to avoid blocking FastAPI server
+def run_bot_in_thread():
+    thread = Thread(target=run_telegram_bot)
+    thread.start()
 
-    # Starta FastAPI-servern på port 8000
+# FastAPI route for testing
+@app.get("/")
+async def root():
+    return {"message": "Bot is running!"}
+
+# Run Telegram bot in a separate thread
+run_bot_in_thread()
+
+# Run FastAPI application
+if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-if __name__ == '__main__':
-    main()
