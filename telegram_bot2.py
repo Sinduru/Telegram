@@ -1,145 +1,243 @@
-import logging
+import os
 import asyncio
-from telegram import Update, InputMediaPhoto, InputMediaVideo
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram.error import TimedOut, NetworkError
+import aiosqlite
+from urllib.parse import quote
+from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import CommandStart
 
-# Aktivera loggning
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+load_dotenv()
 
-# Ditt Telegram-ID (Ägarens ID)
-OWNER_ID = 7840233938  # Ersätt med ditt riktiga Telegram-ID
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_USERNAME = os.getenv("BOT_USERNAME")
+REWARD_GROUP_ID = int(os.getenv("REWARD_GROUP_ID", "0"))
+REQUIRED_INVITES = int(os.getenv("REQUIRED_INVITES", "3"))
 
-# Lagra användares bilder, videor och info
-user_media = {}
+bot = Bot(BOT_TOKEN)
+dp = Dispatcher()
+DB = "bot.db"
 
-# Rensa användares material vid start
-def reset_user_media():
-    global user_media
-    user_media = {}
 
-# Funktion för att hantera mottagna bilder och videor
-async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    username = update.effective_user.username or f"{update.effective_user.first_name} {update.effective_user.last_name}" or "anonym"
+async def init_db():
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            invited_by INTEGER,
+            rewarded INTEGER DEFAULT 0
+        )
+        """)
 
-    if user_id not in user_media:
-        user_media[user_id] = {"photos": [], "videos": [], "chat_id": update.effective_chat.id, "counter": 0, "username": username}
+        cur = await db.execute("PRAGMA table_info(users)")
+        columns = [row[1] for row in await cur.fetchall()]
 
-    if update.message.photo:
-        user_media[user_id]["photos"].append(update.message.photo[-1].file_id)
-    elif update.message.video:
-        user_media[user_id]["videos"].append(update.message.video.file_id)
+        if "reward_link" not in columns:
+            await db.execute("ALTER TABLE users ADD COLUMN reward_link TEXT")
 
-    user_media[user_id]["counter"] += 1
+        await db.commit()
 
-    await update.message.reply_text(
-        f"Tack, ditt material nummer {user_media[user_id]['counter']} har tagits emot!\n"
-        "När du är klar med alla steg, skriv /send för att skicka allt material till kontrollanter."
+
+def referral_link(user_id: int):
+    return f"https://t.me/{BOT_USERNAME}?start={user_id}"
+
+
+async def invite_count(user_id: int):
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute(
+            "SELECT COUNT(*) FROM users WHERE invited_by = ?",
+            (user_id,)
+        )
+        row = await cur.fetchone()
+        return row[0]
+
+
+async def is_rewarded(user_id: int):
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute(
+            "SELECT rewarded FROM users WHERE user_id = ?",
+            (user_id,)
+        )
+        row = await cur.fetchone()
+        return row and row[0] == 1
+
+
+async def share_keyboard(user_id: int):
+    count = await invite_count(user_id)
+    link = referral_link(user_id)
+
+    share_text = (
+        "Bästa smygfoto gruppen har öppnats igen, sjukt material du vill ej missa 👀\n\n"
+        "Den bästa gratis-inträde Telegram grupp som finns!\n\n"
+        "Joina via min personliga länk"
     )
 
-# Funktion för att skicka det insamlade materialet
-async def send_material(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    share_url = (
+        f"https://t.me/share/url?"
+        f"url={quote(link)}&text={quote(share_text)}"
+    )
 
-    if user_id not in user_media or (not user_media[user_id]["photos"] and not user_media[user_id]["videos"]):
-        await update.message.reply_text("Du har inte skickat några bilder eller videor än!")
-        return
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"📤 Dela — {count}/{REQUIRED_INVITES} mot Gratis Access",
+            url=share_url
+        )]
+    ])
 
-    username = user_media[user_id]["username"]
-    user_info_message = f"Användare: {username} (ID: {user_id}) har skickat följande material:\n"
 
-    try:
-        await context.bot.send_message(chat_id='-4662197024', text=user_info_message)
-    except TimedOut:
-        await update.message.reply_text("Timeout vid försök att skicka användarinformation. Försök igen.")
-        return
+async def send_panel(user_id: int):
+    count = await invite_count(user_id)
+    left = max(REQUIRED_INVITES - count, 0)
+    link = referral_link(user_id)
 
-    async def send_media_in_batches(media_list, media_type):
-        batch_size = 10
-        for i in range(0, len(media_list), batch_size):
-            batch = media_list[i:i + batch_size]
-            media_group = [
-                InputMediaPhoto(media=file_id) if media_type == "photo" else InputMediaVideo(media=file_id)
-                for file_id in batch
-            ]
-            try:
-                await context.bot.send_media_group(chat_id='-4662197024', media=media_group)
-                await asyncio.sleep(2)
-            except TimedOut:
-                await update.message.reply_text(f"Timeout vid försök att skicka {media_type}. Försöker igen...")
-                await context.bot.send_media_group(chat_id='-4662197024', media=media_group)
+    await bot.send_message(
+        user_id,
+        "🔥 Smygfoto Inträde 🔥\n\n"
+        f"📊 Du har {count} invites\n"
+        f"🎯 Bara {left} kvar till nästa belöning: 🔓 Gratis Access!\n\n"
+        "🎁 BELÖNING:\n"
+        f"🔒 {REQUIRED_INVITES} invites — 🔓 Gratis Access\n\n"
+        f"📎 Din personliga invite-länk:\n{link}",
+        reply_markup=await share_keyboard(user_id)
+    )
 
-    if user_media[user_id]["photos"]:
-        await send_media_in_batches(user_media[user_id]["photos"], "photo")
-    if user_media[user_id]["videos"]:
-        await send_media_in_batches(user_media[user_id]["videos"], "video")
 
-    try:
-        await update.message.reply_text(
-            "Tack för ditt bidrag, ditt material skickas vidare till gruppen. "
-            "En av ägarna eller våra mod(s) kommer undersöka ditt material. "
-            "Om du blir godkänd får du tillgång till gruppen inom 1-30 minuter.\n"
-            "https://t.me/+cUeYDz-kov4zY2Q0"
+async def create_one_time_group_link(user_id: int):
+    invite_link = await bot.create_chat_invite_link(
+        chat_id=REWARD_GROUP_ID,
+        name=f"Reward {user_id}",
+        member_limit=1
+    )
+    return invite_link.invite_link
+
+
+async def reward_if_ready(user_id: int):
+    count = await invite_count(user_id)
+
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute(
+            "SELECT rewarded, reward_link FROM users WHERE user_id = ?",
+            (user_id,)
         )
-    except TimedOut:
-        logger.warning(f"Timeout vid försök att skicka tackmeddelande till {user_id}")
+        row = await cur.fetchone()
 
-    del user_media[user_id]
-
-# Funktion för att skicka ett meddelande till en specifik användare (endast ägaren)
-async def request_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("Endast ägaren kan använda detta kommando.")
-        return
-
-    try:
-        target_user_id = int(context.args[0])  # Användar-ID
-        message_text = " ".join(context.args[1:])  # Meddelandet
-
-        if not message_text:
-            await update.message.reply_text("Du måste ange ett meddelande att skicka.")
+        if not row:
             return
 
-        await context.bot.send_message(chat_id=target_user_id, text=f"🔔 Meddelande från admin:\n\n{message_text}")
-        await update.message.reply_text(f"Meddelandet har skickats till {target_user_id}.")
+        rewarded, existing_link = row
 
-    except (IndexError, ValueError):
-        await update.message.reply_text("Använd kommandot så här: `/requestchat <användar-ID> <meddelande>`")
-    except TimedOut:
-        await update.message.reply_text("Timeout vid försök att skicka meddelandet. Försök igen.")
-    except Exception as e:
-        await update.message.reply_text(f"Fel uppstod: {e}")
+        if rewarded == 1 and existing_link:
+            return
 
-# Funktion för att starta botten
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_message = (
-        "*Swedish Beauty*\n\n"
-        "Hej! För att få tillgång till gruppen, följ dessa steg:\n\n"
-        "1️⃣ Skicka en skärmdump som visar att du har delat gruppen.\n"
-        "2️⃣ Skicka några bilder på ditt smygfoto material (bidrag krävs).\n"
-        "3️⃣ Skriv /send när du är klar, så skickas materialet till vår kontrollgrupp.\n"
-        "4️⃣ När vi granskat ditt material får du en länk till gruppen!\n\n"
-        "⏳ *Det tar vanligtvis 1-30 minuter för att granskas.*\n\n"
-        "Lycka till! 🎉"
+        if count >= REQUIRED_INVITES:
+            try:
+                one_time_link = await create_one_time_group_link(user_id)
+
+                await db.execute(
+                    "UPDATE users SET rewarded = 1, reward_link = ? WHERE user_id = ?",
+                    (one_time_link, user_id)
+                )
+                await db.commit()
+
+                print(f"[REWARD] User {user_id} låste upp grupp-länken")
+
+                await bot.send_message(
+                    user_id,
+                    "🎉 Grattis!\n\n"
+                    f"Du har nått {REQUIRED_INVITES} invites och låst upp Gratis Access.\n\n"
+                    "🔐 Här är din personliga grupp-länk:\n"
+                    f"{one_time_link}\n\n"
+                    "⚠️ VIKTIGT:\n"
+                    "Den här länken är personlig och fungerar bara för 1 person.\n"
+                    "Dela inte länken med någon annan.\n"
+                    "Om någon annan använder den först kommer du inte kunna använda den själv."
+                )
+
+            except Exception as e:
+                print("KUNDE INTE SKAPA GRUPPLÄNK:", repr(e))
+                await bot.send_message(
+                    user_id,
+                    "⚠️ Du har nått dina invites, men jag kunde inte skapa grupp-länken.\n\n"
+                    "Kontrollera att botten är admin i reward-gruppen och har rätt att skapa invite-länkar."
+                )
+
+
+async def notify_inviter(inviter_id: int, new_user):
+    count = await invite_count(inviter_id)
+    left = max(REQUIRED_INVITES - count, 0)
+
+    username = f"@{new_user.username}" if new_user.username else "inget username"
+
+    print(
+        f"[NY INVITE] Inviter ID: {inviter_id} | "
+        f"Ny användare: {new_user.full_name} | "
+        f"Username: {username} | "
+        f"Totalt invites: {count}/{REQUIRED_INVITES}"
     )
-    await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
-# Huvudfunktion för att köra botten
-def main():
-    bot_token = '7283501110:AAGOu2q8CDqucCR0-ozm2vgUzHKBw6R5_kw'  # Ersätt med din riktiga bot-token
+    await bot.send_message(
+        inviter_id,
+        f"🎉 Ny invite!\n\n"
+        f"👤 {new_user.full_name} gick med via din länk.\n"
+        f"📊 Totalt invites: {count}/{REQUIRED_INVITES}\n"
+        f"🎯 Kvar till Gratis Access: {left}"
+    )
 
-    reset_user_media()
+    await send_panel(inviter_id)
 
-    application = ApplicationBuilder().token(bot_token).build()
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("send", send_material))
-    application.add_handler(CommandHandler("requestchat", request_chat))  # Lägger till requestchat
-    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
+@dp.message(CommandStart())
+async def start(message: Message):
+    user_id = message.from_user.id
+    invited_by = None
 
-    application.run_polling()
+    args = message.text.split(maxsplit=1)
 
-if __name__ == '__main__':
-    main()
+    if len(args) > 1:
+        try:
+            ref_id = int(args[1])
+            if ref_id != user_id:
+                invited_by = ref_id
+        except ValueError:
+            pass
+
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute(
+            "SELECT user_id FROM users WHERE user_id = ?",
+            (user_id,)
+        )
+        exists = await cur.fetchone()
+
+        if not exists:
+            await db.execute(
+                "INSERT INTO users (user_id, invited_by, rewarded) VALUES (?, ?, 0)",
+                (user_id, invited_by)
+            )
+            await db.commit()
+
+            if invited_by:
+                if not await is_rewarded(invited_by):
+                    await notify_inviter(invited_by, message.from_user)
+                    await reward_if_ready(invited_by)
+
+    await send_panel(user_id)
+    await reward_if_ready(user_id)
+
+
+async def main():
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN saknas i .env")
+
+    if not BOT_USERNAME:
+        raise ValueError("BOT_USERNAME saknas i .env")
+
+    if not REWARD_GROUP_ID:
+        raise ValueError("REWARD_GROUP_ID saknas i .env")
+
+    await init_db()
+    print("Botten är igång...")
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
